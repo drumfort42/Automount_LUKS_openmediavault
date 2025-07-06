@@ -1,40 +1,39 @@
-#! /bin/bash
+#!/bin/bash
+set -euo pipefail
 
-#PLEASE, customize this variable with the correct url of your remote key:
 REMOTEKEY="192.168.0.1/key.txt"
-
 SCRIPTNAME="automount_cryptodisk_v2"
-LOGFILE="/tmp/automount_crypto"
-KEYTEMPFILE="/tmp/amcdkey.txt"
+LOGFILE="/tmp/automount_crypto_$$"
+KEYTEMPFILE=$(mktemp /tmp/amcdkey.XXXXXX)
 
-    echo "BEGIN Script $SCRIPTNAME " > $LOGFILE
+log() { echo "$@" >> "$LOGFILE"; }
 
-    echo "Download key into a temp file..." >> $LOGFILE
-    wget -O $KEYTEMPFILE $REMOTEKEY >> $LOGFILE 2>&1
+cleanup() {
+    rm -f "$KEYTEMPFILE"
+    log "Cleaned up temp files."
+}
+trap cleanup EXIT
 
-    echo "Loading key from the temp file..." >> $LOGFILE
-    KEYSTRING="$(cat $KEYTEMPFILE)"
+log "BEGIN Script $SCRIPTNAME"
 
-    echo "Removing key temp file.." >> $LOGFILE
-    rm -rf $KEYTEMPFILE >> $LOGFILE 2>&1
+log "Download key into a temp file..."
+if ! wget -O "$KEYTEMPFILE" "$REMOTEKEY" >> "$LOGFILE" 2>&1; then
+    log "Failed to download key."
+    exit 1
+fi
 
-    echo "Retrieving LUCKS device names..." >> $LOGFILE
-    DISKTOMOUNT=( $( blkid | grep LUKS | cut --fields=1 --delimiter=: ) )
+log "Loading key from the temp file..."
+KEYSTRING=$(<"$KEYTEMPFILE")
 
-    #at this point. DISKTOMOUNT is an array containing all the LUCKS devices detected into the system
+log "Retrieving LUKS device names..."
+mapfile -t DISKTOMOUNT < <(blkid | grep LUKS | cut -d: -f1)
 
-    #for each device...
-    for ITEM in ${DISKTOMOUNT[*]}
-    do
-      echo "Detected LUKS device: $ITEM" >> $LOGFILE
+for ITEM in "${DISKTOMOUNT[@]}"; do
+    log "Detected LUKS device: $ITEM"
+    DEVICENAME="${ITEM#/dev/}"
+    log "Calculated device name: $DEVICENAME"
+    log "Try to unlock disk..."
+    echo "$KEYSTRING" | cryptsetup luksOpen "$ITEM" "${DEVICENAME}-crypt" >> "$LOGFILE" 2>&1 || log "Failed to unlock $ITEM"
+done
 
-      DEVICENAME="${ITEM#/dev/}"
-      echo "Calculated device name: $DEVICENAME" >> $LOGFILE
-
-      echo "Try to unlock disk..." >> $LOGFILE
-      echo $KEYSTRING | cryptsetup luksOpen /dev/$DEVICENAME $DEVICENAME-crypt >> $LOGFILE 2>&1
-    done
-
-    echo "END of log." >> $LOGFILE
-
-exit 0
+log "END of log."
