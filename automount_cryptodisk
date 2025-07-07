@@ -6,7 +6,8 @@ SCRIPTNAME="automount_cryptodisk_v2"
 LOGFILE="/tmp/automount_crypto_$$"
 KEYTEMPFILE=$(mktemp /tmp/amcdkey.XXXXXX)
 
-log() { echo "$@" >> "$LOGFILE"; }
+# Log function: each line gets a timestamp
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@" >> "$LOGFILE"; }
 
 cleanup() {
     rm -f "$KEYTEMPFILE"
@@ -14,7 +15,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-log "BEGIN Script $SCRIPTNAME"
+# Log script start with timestamp
+START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+log "BEGIN Script $SCRIPTNAME at $START_TIME"
 
 log "Download key into a temp file..."
 if ! wget -O "$KEYTEMPFILE" "$REMOTEKEY" >> "$LOGFILE" 2>&1; then
